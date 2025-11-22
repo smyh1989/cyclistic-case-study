@@ -1,0 +1,309 @@
+---
+title: "Cyclistic Bike-Share Case Study"
+author: "Somi Shafiee"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: flatly
+    df_print: paged
+---
+
+## Executive Summary
+
+- Members take **about 64%** of all rides and show strong **weekday commuting patterns**.
+- Casual riders take **longer trips** and ride most on **weekends and afternoons**, suggesting leisure and tourism usage.
+- To convert casuals to members, Cyclistic should focus on:
+  - weekend/afternoon passes that lead into discounted memberships,
+  - targeted campaigns at popular leisure times and locations.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+
+library(tidyverse)
+library(lubridate)
+
+```
+# Introduction
+
+In this case study, I analyze Cyclistic's bike-share data to identify how different customer types use the service and provide recommendations for converting casual riders into annual members.
+
+## Load and Combine Data
+```{r load-data, echo=FALSE}
+data_folder <- "C:/Users/AsusIran/Desktop/cyclistic_data" 
+file_paths <- list.files(path = data_folder,
+                         pattern = "\\.csv$",
+                         full.names = TRUE)
+trips_raw <- file_paths %>%
+  set_names() %>%                   # keeps file name (optional)
+  map_dfr(read_csv, .id = "source") # combines all CSVs
+```
+# Clean Data
+```{r}
+# Convert started_at and ended_at to POSIXct
+trips_clean <- trips_raw %>%
+  mutate(
+    started_at = ymd_hms(started_at),
+    ended_at   = ymd_hms(ended_at),
+
+    # ride length in minutes
+    ride_length = as.numeric(difftime(ended_at, started_at, units = "mins"))
+  )
+```
+# Check for negative or zero ride lengths
+```{r}
+summary(trips_clean$ride_length)
+
+```
+# Cleaning Invalid Ride Lengths
+
+To prepare the data for analysis, I removed trips with impossible ride durations.
+First, rides with zero or negative lengths were filtered out, as these indicate recording errors.
+Next, I excluded rides longer than 24 hours, which bike-share companies typically treat as invalid outliers.
+These steps ensure that only realistic and meaningful trips remain in the dataset.
+```{r}
+trips_clean <- trips_clean %>%
+  filter(
+    ride_length > 0,     # remove negative / zero values
+    ride_length < 1440   # remove rides longer than 24 hours
+  )
+```
+
+# Adding Useful Date & Time Features
+
+To better understand riding patterns, I created several time-based columns from the trip start time.
+These features allow us to explore key behavioral questions—such as whether members ride more on weekdays, whether casual riders prefer weekends, what hours are busiest, and how usage changes across months or seasons.
+
+The following variables were added:
+
+- Day of week (Monday–Sunday)
+- Month of year
+- Hour of day
+
+```{r}
+trips_clean <- trips_clean %>%
+  mutate(
+    day_of_week = wday(started_at, label = TRUE, abbr = FALSE),
+    month       = month(started_at, label = TRUE, abbr = FALSE),
+    hour        = hour(started_at)
+  )
+```
+# Comparing Member vs. Casual Riders
+
+A key objective of the Cyclistic case study is to understand how annual members and casual riders use the service differently. These behavioral differences help inform marketing strategies aimed at converting casual riders into members.
+
+To begin the comparison, we calculate the total number of rides taken by each rider type.
+This gives us a high-level view of overall usage and sets the foundation for deeper analysis.
+
+```{r}
+trips_clean %>%
+  count(member_casual)
+```
+
+```{r fig.width=6, fig.height=4}
+trips_clean %>%
+  count(member_casual) %>%
+  ggplot(aes(x = member_casual, y = n, fill = member_casual)) +
+  geom_col() +
+  labs(
+    title = "Total Rides by Rider Type",
+    x = "Rider Type",
+    y = "Number of Rides"
+  ) +
+  scale_fill_manual(values = c("casual" = "#F4A259", "member" = "#5B8E7D")) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+**Interpretation**
+
+The results show a clear difference in usage volume between the two rider groups.
+Annual members take significantly more trips than casual riders, which aligns with their more frequent, commute-oriented riding patterns. In contrast, casual riders contribute a smaller share of total trips and tend to use the service for occasional, leisure-based rides.
+
+In total, the cleaned dataset includes approximately 5.5 million trips, of which about 64% are member rides and 36% are casual rides.
+This difference in overall usage is one of the key insights that supports the marketing team’s membership growth strategy.
+
+# Average Ride Length by Rider Type
+
+To explore differences in riding behavior, I compared the average trip duration between members and casual riders. Ride length can reveal how each group uses the service—for example, whether trips are typically short and functional or longer and recreational.
+This summary provides insight into the typical riding patterns of each user type.
+```{r}
+trips_clean %>%
+  group_by(member_casual) %>%
+  summarise(
+    mean_ride = mean(ride_length),
+    median_ride = median(ride_length),
+    max_ride = max(ride_length),
+    count = n()
+  )
+```
+
+
+```{r fig.width=6, fig.height=4}
+trips_clean %>%
+  group_by(member_casual) %>%
+  summarise(avg_ride = mean(ride_length)) %>%
+  ggplot(aes(x = member_casual, y = avg_ride, fill = member_casual)) +
+  geom_col() +
+  labs(
+    title = "Average Ride Length by Rider Type",
+    x = "Rider Type",
+    y = "Average Ride Length (minutes)"
+  ) +
+  scale_fill_manual(values = c("casual" = "#F4A259", "member" = "#5B8E7D")) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+**Interpretation**
+
+Casual riders take noticeably longer trips than members. Their average ride length is around 19 minutes, with a median of roughly 11 minutes, suggesting that casual users tend to ride for leisure, sightseeing, or longer recreational purposes.
+
+In contrast, members have shorter trip durations, with an average of about 12 minutes and a median of roughly 9 minutes. This pattern aligns with routine, purpose-driven travel—such as commuting or short-distance trips.
+
+The maximum ride length is similar for both groups because rides longer than 24 hours (1440 minutes) were removed during data cleaning.
+
+These differences highlight the distinct usage habits of each rider type and help inform strategies to encourage casual riders to consider membership.
+
+
+# Rides by Day of the Week
+
+To better understand how usage differs between rider types, I analyzed the number of rides taken on each day of the week. This helps identify whether members and casual riders follow different weekly patterns.
+In particular, weekday versus weekend behavior is an important indicator of whether riders are using the service for commuting, leisure, or occasional trips.
+
+By comparing ride counts across all seven days, we can see how each group’s habits align with work schedules, recreational activities, and seasonal trends.
+
+```{r}
+trips_clean %>%
+  count(member_casual, day_of_week)
+```
+
+```{r fig.width=8, fig.height=4}
+trips_clean %>%
+  count(member_casual, day_of_week) %>%
+  ggplot(aes(x = day_of_week, y = n, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Rides by Day of Week and Rider Type",
+    x = "Day of the Week",
+    y = "Number of Rides",
+    fill = "Rider Type"
+  ) +
+  scale_fill_manual(values = c("casual" = "#F4A259", "member" = "#5B8E7D")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+**Interpretation**
+
+Casual riders show a strong weekend pattern, with their highest trip counts on Saturday and Sunday. This suggests that casual users typically ride for leisure, tourism, and recreational activities.
+
+Member riders show the opposite trend, with their highest activity on weekdays, especially Tuesday, Thursday, and Friday. This reflects consistent commuting behavior and regular weekday usage.
+
+Overall, the daily patterns highlight two distinct user groups:
+
+🎡 Casual riders → weekend, leisure-oriented
+
+🚲 Members → weekday, commute-oriented
+
+These differences help guide Cyclistic’s marketing strategy: promote leisure benefits to casual users and emphasize commute-friendly advantages for members.
+
+
+# Rides by hour of day
+
+To understand daily usage patterns, I analyzed how rides vary across the 24-hour day.
+
+```{r}
+trips_clean %>%
+  count(member_casual, hour)
+
+```
+
+```{r fig.width=8, fig.height=4}
+trips_clean %>%
+  count(member_casual, hour) %>%
+  ggplot(aes(x = hour, y = n, color = member_casual)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 1.5) +
+  labs(
+    title = "Rides by Hour of Day and Rider Type",
+    x = "Hour of Day (0–23)",
+    y = "Number of Rides",
+    color = "Rider Type"
+  ) +
+  scale_color_manual(values = c("casual" = "#F4A259", "member" = "#5B8E7D")) +
+  scale_x_continuous(breaks = seq(0, 23, by = 2)) +
+  theme_minimal()
+```
+**Interpretation**
+
+The hourly trends reveal clear differences in behavior between the two rider groups:
+
+Members show a classic commuting pattern, with strong peaks during
+7–9 AM and 4–6 PM.
+This suggests that many members use Cyclistic for daily transportation.
+
+Casual riders peak much later in the day, with the highest activity between
+11 AM and 5 PM.
+This pattern aligns with recreational or tourist usage, where riders begin later and travel for leisure.
+
+Both groups show minimal usage late at night, indicating low demand during non-daylight hours.
+
+✔ Overall takeaway
+
+Members = predictable weekday commuters
+
+Casual riders = daytime leisure riders
+
+These insights help Cyclistic tailor strategies for each group, such as
+weekday commuter perks for members and afternoon/weekend promotions for casual riders.
+
+
+
+
+
+# Summary of average ride length by weekday
+
+**because it connects all insights**
+
+```{r}
+trips_clean %>%
+  group_by(member_casual, day_of_week) %>%
+  summarise(avg_ride = mean(ride_length))
+```
+
+```{r fig.width=8, fig.height=4}
+trips_clean %>%
+  group_by(member_casual, day_of_week) %>%
+  summarise(avg_ride = mean(ride_length), .groups = "drop") %>%
+  ggplot(aes(x = day_of_week, y = avg_ride, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Average Ride Length by Weekday and Rider Type",
+    x = "Day of the Week",
+    y = "Average Ride Length (minutes)",
+    fill = "Rider Type"
+  ) +
+  scale_fill_manual(values = c("casual" = "#F4A259", "member" = "#5B8E7D")) +
+  theme_minimal()
+```
+
+**Interpretation**
+
+Casual riders consistently take longer trips than members across all days of the week.  
+Their ride lengths peak on **weekends**, especially Saturday and Sunday, reflecting recreational and leisure behavior.
+
+Members, however, maintain shorter and more stable average ride lengths throughout the week.  
+This pattern aligns with **routine weekday commuting**, where trips tend to be brief and practical.
+
+Overall, the plot reinforces the idea that:
+
+- **Members = short, consistent, utilitarian trips (commuting)**  
+- **Casual riders = longer leisure-oriented weekend trips**
+
+This insight supports marketing strategies focused on encouraging casual riders to become commuters.
