@@ -178,16 +178,12 @@ Based on the analysis, Cyclistic can consider the following strategies to conver
 
 ## 10. Repository Structure
 
-Suggested structure for this project:
-
 ```text
 cyclistic-case-study/
-├── rmd/
-│   └── cyclistic_case_study.Rmd        # Main R Markdown report
 ├── outputs/
-│   ├── cyclistic_case_study.html       # Rendered HTML report
-│   ├── cyclistic_case_study.pdf        # (optional) PDF report
-│   └── plots/                          # Exported charts
-├── data/                               # (optional) small sample data
-├── README.md                           # You are here
-└── index.md                            # GitHub Pages portfolio page
+│   └── cyclistic-case-study.html
+├── rmd/
+│   └── cyclistic-case-study.Rmd
+├── .gitignore
+├── LICENSE
+└── README.md
